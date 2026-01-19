@@ -80,6 +80,7 @@ tests/
 /source/lander_assets/Textures/
 *.blend
 *.hdr
+*.npz
 
 # Docker history
 .isaac-lab-docker-history

@@ -101,17 +101,17 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # camera
-    # tiled_camera: TiledCameraCfg = TiledCameraCfg(
-    #     prim_path="/World/envs/env_.*/Robot/Camera",
-    #     offset=TiledCameraCfg.OffsetCfg(pos=(0.02, 0.0, 0.02), rot=quat_from_euler_xyz(torch.tensor(0), torch.tensor(-30*torch.pi/180), torch.tensor(0)).tolist(), convention="world"),
-    #     data_types=["rgb"],
-    #     spawn=sim_utils.PinholeCameraCfg(
-    #         focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 20.0)
-    #     ),
-    #     width=pix_x,
-    #     height=pix_y,
-    # )
-    # write_image_to_file = True
+    tiled_camera: TiledCameraCfg = TiledCameraCfg(
+        prim_path="/World/envs/env_.*/Robot/Camera",
+        offset=TiledCameraCfg.OffsetCfg(pos=(0.02, 0.0, 0.02), rot=quat_from_euler_xyz(torch.tensor(0), torch.tensor(-30*torch.pi/180), torch.tensor(0)).tolist(), convention="world"),
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 20.0)
+        ),
+        width=pix_x,
+        height=pix_y,
+    )
+    write_image_to_file = True
 
     # reward scales
     lin_vel_reward_scale = -0.05
@@ -132,11 +132,11 @@ class QuadcopterEnv(DirectRLEnv):
         # Goal position
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
 
-        # if len(self.cfg.tiled_camera.data_types) != 1:
-        #     raise ValueError(
-        #         "The Cartpole camera environment only supports one image type at a time but the following were"
-        #         f" provided: {self.cfg.tiled_camera.data_types}"
-        #     )
+        if len(self.cfg.tiled_camera.data_types) != 1:
+            raise ValueError(
+                "The Cartpole camera environment only supports one image type at a time but the following were"
+                f" provided: {self.cfg.tiled_camera.data_types}"
+            )
 
         # Logging
         self._episode_sums = {
@@ -162,9 +162,9 @@ class QuadcopterEnv(DirectRLEnv):
 
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
-        # self._tiled_camera = TiledCamera(self.cfg.tiled_camera)
+        self._tiled_camera = TiledCamera(self.cfg.tiled_camera)
         self.scene.articulations["robot"] = self._robot
-        # self.scene.sensors["tiled_camera"] = self._tiled_camera
+        self.scene.sensors["tiled_camera"] = self._tiled_camera
 
 
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
@@ -194,17 +194,17 @@ class QuadcopterEnv(DirectRLEnv):
             self._robot.data.root_pos_w, self._robot.data.root_quat_w, self._desired_pos_w
         )
 
-        # data_type = "rgb" if "rgb" in self.cfg.tiled_camera.data_types else "depth"
-        # if "rgb" in self.cfg.tiled_camera.data_types:
-        #     camera_data = self._tiled_camera.data.output[data_type] / 255.0
-        #     if self.cfg.write_image_to_file:
-        #         save_images_to_file(camera_data, f"quadcopter_{data_type}.png")
-        #     # normalize the camera data for better training results
-        #     mean_tensor = torch.mean(camera_data, dim=(1, 2), keepdim=True)
-        #     camera_data -= mean_tensor
-        # elif "depth" in self.cfg.tiled_camera.data_types:
-        #     camera_data = self._tiled_camera.data.output[data_type]
-        #     camera_data[camera_data == float("inf")] = 0
+        data_type = "rgb" if "rgb" in self.cfg.tiled_camera.data_types else "depth"
+        if "rgb" in self.cfg.tiled_camera.data_types:
+            camera_data = self._tiled_camera.data.output[data_type] / 255.0
+            if self.cfg.write_image_to_file:
+                save_images_to_file(camera_data, f"quadcopter_{data_type}.png")
+            # normalize the camera data for better training results
+            mean_tensor = torch.mean(camera_data, dim=(1, 2), keepdim=True)
+            camera_data -= mean_tensor
+        elif "depth" in self.cfg.tiled_camera.data_types:
+            camera_data = self._tiled_camera.data.output[data_type]
+            camera_data[camera_data == float("inf")] = 0
 
         obs = torch.cat(
             [
@@ -224,8 +224,8 @@ class QuadcopterEnv(DirectRLEnv):
         is_first = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         dones = {"is_first": is_first, "is_last": is_last, "is_terminal": is_terminal} 
 
-        # observations = {"state": obs, "image": camera_data.clone(), "reward": reward}
-        observations = {"state": obs, "reward": reward}
+        observations = {"state": obs, "image": camera_data.clone(), "reward": reward}
+        # observations = {"state": obs, "reward": reward}
         observations.update(dones) 
         return observations
 
