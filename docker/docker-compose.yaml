@@ -51,6 +51,15 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
   - type: bind
     source: ../tools
     target: ${DOCKER_ISAACLAB_PATH}/tools
+  - type: bind
+    source: ../logs
+    target: ${DOCKER_ISAACLAB_PATH}/logs
+  - type: bind
+    source: ../plots
+    target: ${DOCKER_ISAACLAB_PATH}/plots
+  - type: bind
+    source: ../outputs
+    target: ${DOCKER_ISAACLAB_PATH}/outputs
     # The effect of these volumes is twofold:
     # 1. Prevent root-owned files from flooding the _build and logs dir
     #    on the host machine
@@ -59,9 +68,9 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
   - type: volume
     source: isaac-lab-docs
     target: ${DOCKER_ISAACLAB_PATH}/docs/_build
-  - type: volume
-    source: isaac-lab-logs
-    target: ${DOCKER_ISAACLAB_PATH}/logs
+#  - type: volume
+    # source: isaac-lab-logs
+    # target: ${DOCKER_ISAACLAB_PATH}/logs
   - type: volume
     source: isaac-lab-data
     target: ${DOCKER_ISAACLAB_PATH}/data_storage
@@ -69,6 +78,9 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
   - type: bind
     source: .isaac-lab-docker-history
     target: ${DOCKER_USER_HOME}/.bash_history
+
+x-default-isaac-lab-devices: &default-isaac-lab-devices
+  - /dev/input:/dev/input
 
 x-default-isaac-lab-environment: &default-isaac-lab-environment
   - ISAACSIM_PATH=${DOCKER_ISAACLAB_PATH}/_isaac_sim
@@ -100,8 +112,15 @@ services:
     container_name: isaac-lab-base${DOCKER_NAME_SUFFIX-}
     environment: *default-isaac-lab-environment
     volumes: *default-isaac-lab-volumes
+    devices: *default-isaac-lab-devices
     network_mode: host
     deploy: *default-isaac-lab-deploy
+    pids_limit: 0
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65536
+        hard: 65536
     # This is the entrypoint for the container
     entrypoint: bash
     stdin_open: true
@@ -129,8 +148,15 @@ services:
     container_name: isaac-lab-ros2${DOCKER_NAME_SUFFIX-}
     environment: *default-isaac-lab-environment
     volumes: *default-isaac-lab-volumes
+    devices: *default-isaac-lab-devices
     network_mode: host
     deploy: *default-isaac-lab-deploy
+    pids_limit: 0
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65536
+        hard: 65536
     # This is the entrypoint for the container
     entrypoint: bash
     stdin_open: true

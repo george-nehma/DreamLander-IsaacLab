@@ -1,4 +1,22 @@
 #!/usr/bin/env bash
+# === Per-job TMPDIR for Isaac Lab on Slurm ===
+
+if [ -z "${TMPDIR:-}" ]; then
+
+  if [ -n "${SLURM_JOB_ID:-}" ]; then
+
+    export TMPDIR="/tmp/${USER}-isaac-${SLURM_JOB_ID}"
+
+  else
+
+    export TMPDIR="/tmp/${USER}-isaac-$$"
+
+  fi
+
+fi
+
+mkdir -p "${TMPDIR}/docker-isaac-sim"
+
 
 echo "(run_singularity.py): Called on compute node from current isaaclab directory $1 with container profile $2 and arguments ${@:3}"
 
@@ -57,7 +75,7 @@ tar -xf $CLUSTER_SIF_PATH/$2.tar  -C $TMPDIR
 # execute command in singularity container
 # NOTE: ISAACLAB_PATH is normally set in `isaaclab.sh` but we directly call the isaac-sim python because we sync the entire
 # Isaac Lab directory to the compute node and remote the symbolic link to isaac-sim
-singularity exec \
+apptainer exec \
     -B $TMPDIR/docker-isaac-sim/cache/kit:${DOCKER_ISAACSIM_ROOT_PATH}/kit/cache:rw \
     -B $TMPDIR/docker-isaac-sim/cache/ov:${DOCKER_USER_HOME}/.cache/ov:rw \
     -B $TMPDIR/docker-isaac-sim/cache/pip:${DOCKER_USER_HOME}/.cache/pip:rw \
@@ -68,7 +86,7 @@ singularity exec \
     -B $TMPDIR/docker-isaac-sim/documents:${DOCKER_USER_HOME}/Documents:rw \
     -B $TMPDIR/$dir_name:/workspace/isaaclab:rw \
     -B $CLUSTER_ISAACLAB_DIR/logs:/workspace/isaaclab/logs:rw \
-    --nv --writable --containall $TMPDIR/$2.sif \
+    --nv $TMPDIR/$2.sif \
     bash -c "export ISAACLAB_PATH=/workspace/isaaclab && cd /workspace/isaaclab && /isaac-sim/python.sh ${CLUSTER_PYTHON_EXECUTABLE} ${@:3}"
 
 # copy resulting cache files back to host

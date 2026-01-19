@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import gymnasium as gym
 import torch
+import numpy as np
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, ArticulationCfg
@@ -14,10 +15,13 @@ from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
 from isaaclab.envs.ui import BaseEnvWindow
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import TiledCamera, TiledCameraCfg, save_images_to_file
 from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
-from isaaclab.utils.math import subtract_frame_transforms
+from isaaclab.utils.math import subtract_frame_transforms, quat_from_euler_xyz
+import isaacsim.core.utils.numpy.rotations as rot_utils
+
 
 ##
 # Pre-defined configs
@@ -55,6 +59,8 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     observation_space = 12
     state_space = 0
     debug_vis = True
+    pix_x = 128
+    pix_y = 128
 
     ui_window_class_type = QuadcopterEnvWindow
 
@@ -86,13 +92,26 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=4096, env_spacing=2.5, replicate_physics=True, clone_in_fabric=True
+        num_envs=8, env_spacing=2.5, replicate_physics=True, clone_in_fabric=True
     )
 
     # robot
     robot: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     thrust_to_weight = 1.9
     moment_scale = 0.01
+
+    # camera
+    # tiled_camera: TiledCameraCfg = TiledCameraCfg(
+    #     prim_path="/World/envs/env_.*/Robot/Camera",
+    #     offset=TiledCameraCfg.OffsetCfg(pos=(0.02, 0.0, 0.02), rot=quat_from_euler_xyz(torch.tensor(0), torch.tensor(-30*torch.pi/180), torch.tensor(0)).tolist(), convention="world"),
+    #     data_types=["rgb"],
+    #     spawn=sim_utils.PinholeCameraCfg(
+    #         focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 20.0)
+    #     ),
+    #     width=pix_x,
+    #     height=pix_y,
+    # )
+    # write_image_to_file = True
 
     # reward scales
     lin_vel_reward_scale = -0.05
@@ -113,6 +132,12 @@ class QuadcopterEnv(DirectRLEnv):
         # Goal position
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
 
+        # if len(self.cfg.tiled_camera.data_types) != 1:
+        #     raise ValueError(
+        #         "The Cartpole camera environment only supports one image type at a time but the following were"
+        #         f" provided: {self.cfg.tiled_camera.data_types}"
+        #     )
+
         # Logging
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
@@ -131,9 +156,16 @@ class QuadcopterEnv(DirectRLEnv):
         # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
         self.set_debug_vis(self.cfg.debug_vis)
 
+    def close(self):
+        """Cleanup for the environment."""
+        super().close()
+
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
+        # self._tiled_camera = TiledCamera(self.cfg.tiled_camera)
         self.scene.articulations["robot"] = self._robot
+        # self.scene.sensors["tiled_camera"] = self._tiled_camera
+
 
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -161,6 +193,19 @@ class QuadcopterEnv(DirectRLEnv):
         desired_pos_b, _ = subtract_frame_transforms(
             self._robot.data.root_pos_w, self._robot.data.root_quat_w, self._desired_pos_w
         )
+
+        # data_type = "rgb" if "rgb" in self.cfg.tiled_camera.data_types else "depth"
+        # if "rgb" in self.cfg.tiled_camera.data_types:
+        #     camera_data = self._tiled_camera.data.output[data_type] / 255.0
+        #     if self.cfg.write_image_to_file:
+        #         save_images_to_file(camera_data, f"quadcopter_{data_type}.png")
+        #     # normalize the camera data for better training results
+        #     mean_tensor = torch.mean(camera_data, dim=(1, 2), keepdim=True)
+        #     camera_data -= mean_tensor
+        # elif "depth" in self.cfg.tiled_camera.data_types:
+        #     camera_data = self._tiled_camera.data.output[data_type]
+        #     camera_data[camera_data == float("inf")] = 0
+
         obs = torch.cat(
             [
                 self._robot.data.root_lin_vel_b,
@@ -170,7 +215,18 @@ class QuadcopterEnv(DirectRLEnv):
             ],
             dim=-1,
         )
-        observations = {"policy": obs}
+
+        reward = self._get_rewards()
+        ended, time_out = self._get_dones()
+
+        is_last = time_out
+        is_terminal = ended
+        is_first = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        dones = {"is_first": is_first, "is_last": is_last, "is_terminal": is_terminal} 
+
+        # observations = {"state": obs, "image": camera_data.clone(), "reward": reward}
+        observations = {"state": obs, "reward": reward}
+        observations.update(dones) 
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
@@ -197,7 +253,6 @@ class QuadcopterEnv(DirectRLEnv):
     def _reset_idx(self, env_ids: torch.Tensor | None):
         if env_ids is None or len(env_ids) == self.num_envs:
             env_ids = self._robot._ALL_INDICES
-
         # Logging
         final_distance_to_goal = torch.linalg.norm(
             self._desired_pos_w[env_ids] - self._robot.data.root_pos_w[env_ids], dim=1

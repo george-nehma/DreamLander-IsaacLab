@@ -130,7 +130,11 @@ The dataset contains:
 
 * Human demonstrations of Franka arm cube stacking
 * Manually annotated subtask boundaries for each demonstration
+<<<<<<< HEAD
+* Compatible with both basic cube stacking and adaptive bin stacking tasks
+=======
 * Compatible with both basic cube stacking and adaptive bin cube stacking tasks
+>>>>>>> upstream/main
 
 Download and Setup
 ^^^^^^^^^^^^^^^^^^
@@ -364,6 +368,8 @@ Generate the complete adaptive stacking dataset:
 
    If the pre-annotated dataset is used and the data generation command is run with ``--headless`` enabled, the generation time is typically around ~220 minutes for 1000 demonstrations for a single environment on a RTX 6000 Ada GPU.
 
+<<<<<<< HEAD
+=======
 .. note::
 
    **VRAM usage and GPU recommendations**
@@ -373,6 +379,7 @@ Generate the complete adaptive stacking dataset:
     * Adaptive Bin Cube Stacking: 1 env ~9.3–9.6 GB steady; 5 envs ~22.0–22.3 GB steady (briefly higher during initialization).
     * Minimum recommended GPU: ≥24 GB VRAM for ``--num_envs`` 1–2; ≥48 GB VRAM for ``--num_envs`` up to ~5.
     * To reduce VRAM: prefer ``--headless`` and keep ``--num_envs`` modest. Numbers can vary with scene assets and number of demonstrations.
+>>>>>>> upstream/main
 
 Learning Policies from SkillGen Data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
