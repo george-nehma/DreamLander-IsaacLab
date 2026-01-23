@@ -92,7 +92,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=8, env_spacing=2.5, replicate_physics=True, clone_in_fabric=True
+        num_envs=8, env_spacing=2.5, replicate_physics=True, clone_in_fabric=False
     )
 
     # robot
@@ -227,6 +227,8 @@ class QuadcopterEnv(DirectRLEnv):
         observations = {"state": obs, "image": camera_data.clone(), "reward": reward}
         # observations = {"state": obs, "reward": reward}
         observations.update(dones) 
+
+        # observations = {"policy": obs, "camera": camera_data}
         return observations
 
     def _get_rewards(self) -> torch.Tensor:

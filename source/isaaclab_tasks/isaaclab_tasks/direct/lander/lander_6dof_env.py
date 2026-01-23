@@ -290,7 +290,7 @@ class Lander6DOFEnv(DirectRLEnv):
         self._moment[:, 0, :] = moments # don't update moment in 2D env but pass through as zero
 
     def _apply_action(self):
-        self._robot.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
+        self._robot.permanent_wrench_composer.set_forces_and_torques(self._thrust, self._moment, body_ids=self._body_id)
 
     def _get_observations(self) -> dict:
         
@@ -378,7 +378,7 @@ class Lander6DOFEnv(DirectRLEnv):
         # --- Translational reward ---
         
         # --- Hovering conditions ---
-        alt_ok = self._altitude <= 2.0
+        alt_ok = self._altitude <= 1.5
         vel_ok = torch.norm(self._lin_vel, dim=1) < self.cfg.vlim
         pos_ok = torch.norm(self._pos[:, :2], dim=1) < self.cfg.rlim
         land_pos = torch.norm(self._pos[:, :2], dim=1) < self.cfg.rlim/2
@@ -387,10 +387,10 @@ class Lander6DOFEnv(DirectRLEnv):
 
         # --- Landed conditions ---
         vel_landed = torch.abs(self._lin_vel[:, 2]) < self.cfg.vlim
-        contact_landed = vel_ok & (contact > 0.1)
+        contact_landed = vel_ok & (contact > 0.5)
         self._landed = pos_ok & contact_landed
 
-        hard_landing = (contact > 0) & (~vel_landed)
+        hard_landing = (contact > 0.0) & alt_ok & (~vel_landed)
         self._crashed = hard_landing
 
         # alt = torch.clamp(self._altitude, min=10.0)
@@ -425,13 +425,13 @@ class Lander6DOFEnv(DirectRLEnv):
         # --- Penalties and Bonuses ---
         reward[self._landed] += 20
         reward[~self._aligned & self._crashed] -= 10
-        hovering_pen = 0.00001*self._actions[(pos_ok & (self._altitude<1.0)),2]
-        reward[(pos_ok & (self._altitude<1.0))] -= hovering_pen
+        # hovering_pen = 0.00001*self._actions[(pos_ok & (self._altitude<1.0)),2]
+        # reward[(pos_ok & (self._altitude<1.0))] -= hovering_pen
         reward[(~self._aligned & (self._altitude<5.0))] -= 0.01
 
         reward[self._aligned & self._landed] += 50
 
-        reward -= 0.01
+        reward -= 0.1
 
         for i in range(self.num_envs):
             roll, pitch, yaw = math.euler_xyz_from_quat(self._quat)

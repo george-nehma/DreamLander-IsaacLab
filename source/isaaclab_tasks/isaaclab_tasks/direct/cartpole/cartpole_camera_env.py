@@ -160,18 +160,25 @@ class CartpoleCameraEnv(DirectRLEnv):
             camera_data = self._tiled_camera.data.output[data_type]
             camera_data[camera_data == float("inf")] = 0
         
+        # ~~~ Regular ENV (RSL RL, SKRL etc.) ~~~ #
+        observations = {"policy": camera_data.clone()}
 
-        reward = self._get_rewards()
+        if self.cfg.write_image_to_file:
+            save_images_to_file(observations["policy"], f"cartpole_{data_type}.png")
 
-        ended, time_out = self._get_dones()
+        # ~~~ Dreamer Observations ~~~ #
+        # reward = self._get_rewards()
 
-        is_last = time_out
-        is_terminal = ended
-        is_first = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        dones = {"is_first": is_first, "is_last": is_last, "is_terminal": is_terminal} 
+        # ended, time_out = self._get_dones()
 
-        observations = {"image": camera_data.clone(), "reward": reward}
-        observations.update(dones) 
+        # is_last = time_out
+        # is_terminal = ended
+        # is_first = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        # dones = {"is_first": is_first, "is_last": is_last, "is_terminal": is_terminal} 
+
+        # observations = {"image": camera_data.clone(), "reward": reward}
+        # observations.update(dones)
+
         return observations
 
     def _get_rewards(self) -> torch.Tensor:

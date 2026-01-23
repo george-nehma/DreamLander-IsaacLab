@@ -372,7 +372,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     except AttributeError:
         dt = test_env.unwrapped.step_dt
 
-    num_runs = 10
+    num_runs = 20
     all_results = []  # will store results of all simulations
 
     for run_idx in range(num_runs):

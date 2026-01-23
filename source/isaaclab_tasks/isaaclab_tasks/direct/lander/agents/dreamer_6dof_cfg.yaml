@@ -53,7 +53,7 @@ defaults:
   reward_head:
     {layers: 4, dist: 'symlog_disc', loss_scale: 1.0, outscale: 0.0} 
   cont_head:
-    {layers: 2, loss_scale: 1.0, outscale: 1.0}
+    {layers: 4, loss_scale: 1.0, outscale: 1.0}
   dyn_scale: 0.5
   rep_scale: 0.1
   kl_free: 1.0
@@ -94,7 +94,7 @@ defaults:
   disag_units: 400
   disag_action_cond: False
 
-lander:
-  train_ratio: 256
-  envs: 4
+# lander:
+#   train_ratio: 256
+#   envs: 4
 
