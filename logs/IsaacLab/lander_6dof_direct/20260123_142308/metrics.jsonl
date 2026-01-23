@@ -276,3 +276,4 @@
 {"step": 111170, "dataset_size": 55585.0, "train_return": 82.44627380371094, "train_length": 246.0, "train_episodes": 243.0, "envs_finished": 3.0}
 {"step": 111250, "dataset_size": 55625.0, "train_return": 98.32197570800781, "train_length": 233.0, "train_episodes": 244.0, "envs_finished": 6.0}
 {"step": 111266, "dataset_size": 55633.0, "train_return": 93.1761474609375, "train_length": 254.0, "train_episodes": 245.0, "envs_finished": 1.0}
+{"step": 111602, "dataset_size": 55801.0, "train_return": 115.66831970214844, "train_length": 226.0, "train_episodes": 246.0, "envs_finished": 4.0}
