@@ -281,7 +281,7 @@ class Lander6DOFEnv(DirectRLEnv):
         xthrust = self._actions[:,0]  # x thrust
         ythrust = self._actions[:,1]  # y thrust
         zthrust = self._actions[:,2]  # z thrust
-        xmoment = self._actions[:,3]  # x moment
+        xmoment = self._actions[:,3]  # x moment 
         ymoment = self._actions[:,4]  # y moment
         zmoment = self._actions[:,5]  # z moment
         thrusts = torch.stack([xthrust, ythrust, zthrust], dim=-1)  # [N, 3]
@@ -378,10 +378,9 @@ class Lander6DOFEnv(DirectRLEnv):
         # --- Translational reward ---
         
         # --- Hovering conditions ---
-        alt_ok = self._altitude <= 1.5
+        alt_ok = self._altitude <= 2.0
         vel_ok = torch.norm(self._lin_vel, dim=1) < self.cfg.vlim
         pos_ok = torch.norm(self._pos[:, :2], dim=1) < self.cfg.rlim
-        land_pos = torch.norm(self._pos[:, :2], dim=1) < self.cfg.rlim/2
         no_contact = contact <= 0.1
         self._hovering = alt_ok & vel_ok & pos_ok & no_contact
 
@@ -431,7 +430,7 @@ class Lander6DOFEnv(DirectRLEnv):
 
         reward[self._aligned & self._landed] += 50
 
-        reward -= 0.1
+        reward -= 0.01
 
         for i in range(self.num_envs):
             roll, pitch, yaw = math.euler_xyz_from_quat(self._quat)
