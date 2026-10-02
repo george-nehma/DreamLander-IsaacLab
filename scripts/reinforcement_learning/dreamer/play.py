@@ -372,7 +372,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     except AttributeError:
         dt = test_env.unwrapped.step_dt
 
-    num_runs = 20
+    num_runs = 10
     all_results = []  # will store results of all simulations
 
     for run_idx in range(num_runs):
@@ -456,9 +456,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
 
     torch.save(all_results, os.path.join(logdir, f"play_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pt"))
 
-    # center=np.array([0, 0])
-    # plot_multiple(all_results, dt, center)
-    # plot_landing(all_results, dt, center)
+    center=np.array([0, 0])
+    plot_multiple(all_results, dt, center)
+    plot_landing(all_results, dt, center)
 
     # close the simulator
     test_env.close()

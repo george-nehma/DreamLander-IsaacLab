@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import gymnasium as gym
+import copy
 
 to_np = lambda x: x.detach().cpu().numpy() if isinstance(x, torch.Tensor) else np.asarray(x)
 
@@ -14,9 +15,10 @@ class IsaacLabDreamerWrapper(gym.Wrapper):
         super().__init__(env)
         self.env = env
         self.obs_keys = obs_keys
+        # self.term_obs_buffer = None       # stores terminal obs
+        # self.reset_obs_buffer = None      # stores reset obs
 
         # Detect number of parallel envs
-        # sample_obs, _ = self.env.reset()
         self.num_envs = env.env.num_envs
 
         # Setup observation space
@@ -69,9 +71,12 @@ class IsaacLabDreamerWrapper(gym.Wrapper):
             return to_np(obs)
 
     def reset(self, **kwargs):
-        obs, info = self.env.reset(**kwargs)
+        obs, extras = self.env.reset(**kwargs)
         self._episode_step[:] = 0
-        obs['is_first'] = self.env.env.firsts
+        obs["reward"] = torch.zeros_like(extras["is_first"], dtype=torch.float32)
+        obs['is_first'] = extras["is_first"]
+        obs['is_last'] = extras["is_last"]
+        obs['is_terminal'] = extras["is_terminal"]
         processed_obs = self._process_observation(obs)
 
         return processed_obs #, dreamer_info
@@ -80,7 +85,44 @@ class IsaacLabDreamerWrapper(gym.Wrapper):
         if isinstance(action, np.ndarray):
             action = torch.from_numpy(action).to(self.env.env.device)
 
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, terminated, reset, extras = self.env.step(action)
+
+        if getattr(self.env.env, "_last_terminal_obs", None) is not None:
+            term_obs = self.env.env._last_terminal_obs   # terminal obs BEFORE reset
+            term_extras = self.env.env._last_terminal_extras
+            reset_obs = copy.deepcopy(obs)
+            reset_extras = copy.deepcopy(extras)
+            # self.term_obs_buffer = term_obs            
+            # self.reset_obs_buffer = reset_obs
+           
+            obs['state'] = term_obs['state']
+            obs['reward'] = reward
+            obs['is_first'] = term_extras["is_first"]
+            obs['is_last'] = term_extras["is_last"]
+            obs['is_terminal'] = term_extras["is_terminal"]
+
+            reset_obs['is_first'] = reset_extras['is_first']
+            reset_obs['reward'] = reward
+            reset_obs['is_last'] = reset_extras['is_last']
+            reset_obs['is_terminal'] = reset_extras['is_terminal']
+
+            # Clear it so next step doesn't reuse
+            self.env.env._last_terminal_obs = None
+            self.env.env._last_terminal_extras = None
+
+            processed_reset_obs = self._process_observation(reset_obs)
+            extras['reset_obs'] = processed_reset_obs
+
+        else:
+            term_obs = None
+            reset_obs = None
+
+            obs['reward'] = reward
+            obs['is_first'] = extras["is_first"]
+            obs['is_last'] = extras["is_last"]
+            obs['is_terminal'] = extras["is_terminal"]
+
+        done = terminated | reset        
         processed_obs = self._process_observation(obs)
 
         self._episode_step += 1
@@ -89,7 +131,7 @@ class IsaacLabDreamerWrapper(gym.Wrapper):
         reward = to_np(reward)
         done = to_np(done)
 
-        return processed_obs, reward, done, info
+        return processed_obs, reward, done, extras
 
     def close(self):
         self.env.close()

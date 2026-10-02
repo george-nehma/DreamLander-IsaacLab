@@ -19,7 +19,7 @@ from isaaclab.sim import SimulationCfg, PhysxCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 import isaaclab.utils.math as math
-from isaaclab.sensors import Camera, CameraCfg, save_images_to_file, ContactSensor, ContactSensorCfg, RayCaster, RayCasterCfg, Imu, ImuCfg, patterns
+from isaaclab.sensors import Camera, CameraCfg, save_images_to_file,  RayCaster, RayCasterCfg, Imu, ImuCfg, patterns, ContactSensor, ContactSensorCfg
 import isaacsim.core.utils.numpy.rotations as rot_utils
 
 ##
@@ -65,41 +65,17 @@ class Lander6DOFEnvCfg(DirectRLEnvCfg):
 
     # robot
     robot: RigidObjectCfg = LUNAR_LANDER_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    # robot.spawn.rigid_props.disable_gravity = True
-    # robot: ArticulationCfg = LUNAR_LANDER_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    # legs: RigidObjectCfg = RigidObjectCfg(
-    #     prim_path = "/World/envs/env_.*/Robot/FR_LEG/Cylinder",
-    #     spawn = sim_utils.CylinderCfg(
-    #         radius = 0.3,
-    #         height = 0.05,
-    #         activate_contact_sensors = True,
-    #         rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-    #         mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-    #         collision_props = sim_utils.CollisionPropertiesCfg(),
-    #         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic = 0.8),
-    #         ),
-    #         init_state = RigidObjectCfg.InitialStateCfg(),
-    # )
-    # camera
-    # camera: CameraCfg = CameraCfg(
-    #     prim_path="/World/envs/env_.*/Robot/MainBody/Camera",
-    #     offset=CameraCfg.OffsetCfg(pos=(0.0, 0.0, -2.03/2), rot=rot_utils.euler_angles_to_quats(np.array([-90, 90, 0]), degrees=True).tolist(), convention="world"),
-    #     data_types=["rgb"],
-    #     spawn=sim_utils.PinholeCameraCfg(
-    #         focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 20.0)
-    #     ),
-    #     width=64,
-    #     height=64,
-    # )
-    # write_image_to_file = True
 
     ui_window_class_type = Lander6DOFEnvWindow
+
+    gravity_multiplier = 3.711/1.62
+    # gravity_multiplier = 1.0
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 60,
         render_interval=decimation,
-        gravity = (0.0, 0.0, -1.62),  # [m/s^2]
+        gravity = (0.0, 0.0, -1.62 * gravity_multiplier),  # [m/s^2]
         physx=PhysxCfg(
             min_position_iteration_count=4,
             min_velocity_iteration_count=2,
@@ -161,7 +137,7 @@ class Lander6DOFEnvCfg(DirectRLEnvCfg):
     # spaces
     action_space = 6 # 3D translational Fx,Fy,Fz,Mx,My,Mz
     state_space = 14
-    observation_space = state_space # q0, q1, q2, q3, pos x, pos y, pos z, vel x, vel y, vel z, om_x, om_y, om_z, contact bool,
+    observation_space = state_space # q0, q1, q2, q3, pos x, pos y, pos z, vel x, vel y, vel z, om_x, om_y, om_z, g_x, g_y, g_z, contact bool,
 
     # reward scales
     lin_vel_reward_scale = -1.3
@@ -195,26 +171,27 @@ class Lander6DOFEnv(DirectRLEnv):
 
         self.actionLow = np.full(self.action_space.shape, -3136, dtype=np.float32) # min thrust of RCS thrusters [N] and moment [Nm] 4*400N*1.96m
         self.actionHigh = np.full(self.action_space.shape, 3136, dtype=np.float32) # max thrust of RCS thrusters [N] and moment [Nm] 4*400N*1.96m
-        self.actionLow[:,0] = -800.0 
-        self.actionHigh[:,0] = 800.0
-        self.actionLow[:,1] = -800.0
-        self.actionHigh[:,1] = 800.0
-        self.actionLow[:,2] = 4600.0
-        self.actionHigh[:,2] = 43000.0
+        self.actionLow[:,0:2] = -800.0 * cfg.gravity_multiplier
+        self.actionHigh[:,0:2] = 800.0 * cfg.gravity_multiplier
+        self.actionLow[:,2] = 4600.0 * cfg.gravity_multiplier
+        self.actionHigh[:,2] = 43000.0 * cfg.gravity_multiplier
         self.action_space = gym.spaces.Box(dtype=np.float32, shape=self.actionHigh.shape ,low=self.actionLow, high=self.actionHigh)
-        self.prev_action = torch.zeros(self.action_space.shape, device=self.device)
-        self.d_action = torch.zeros(self.action_space.shape, device=self.device)
-        self.aligned_history = torch.zeros((self.num_envs, 10), dtype=torch.bool, device=self.device)
-        self._alignment_prev = torch.zeros(self.num_envs, device=self.device)
         self.landed_hist = 0
         self.crashed_hist = 0
-        self.missed_hist = 0
+        self.align_land_hist = 0
         self.aligned_hist = 0
         self.hard_landing_hist = 0
+        self.OOB_hist = 0
+        self.time_out_hist = 0
 
-        state_space = list(self.state_space.shape)
-        state_space[1] -= 1 
-        self._initial_state = torch.zeros(tuple(state_space), device=self.device) 
+        # state_space = list(self.state_space.shape)
+        # state_space[1] -= 1 
+        # self._initial_state = torch.zeros(tuple(state_space), device=self.device) 
+
+        self.extras["is_first"] = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.extras["is_last"] = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.extras["is_terminal"] = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        
 
         # Total thrust and moment applied to the CoG of the lander
         self._actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
@@ -245,16 +222,10 @@ class Lander6DOFEnv(DirectRLEnv):
 
     def _setup_scene(self):
         self._robot = RigidObject(self.cfg.robot)
-        # self._legs = RigidObject(self.cfg.legs)
-        # self._robot = Articulation(self.cfg.robot)
-        # self.scene.articulations["robot"] = self._robot
-        # self._camera = Camera(self.cfg.camera)
         self._height_scanner = RayCaster(self.cfg.height_scanner)
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
         self._imu = Imu(self.cfg.imu)
         self.scene.rigid_objects["robot"] = self._robot
-        # self.scene.rigid_objects["legs"] = self._legs
-        # self.scene.sensors["camera"] = self._camera
         self.scene.sensors["height_scanner"] = self._height_scanner
         self.scene.sensors["contact_forces"] = self._contact_sensor
         self.scene.sensors["imu"] = self._imu
@@ -310,45 +281,25 @@ class Lander6DOFEnv(DirectRLEnv):
         self._lin_vel = math.quat_apply(self._quat, self._imu.data.lin_vel_b + torch.normal(0,0.01, size=(self.num_envs,3), device=self.device))
         self._ang_vel = self._imu.data.ang_vel_b + torch.normal(0,0.0007, size=(self.num_envs,3), device=self.device)
         
-        self._contact = self._contact_sensor.data.current_contact_time.squeeze(1)
+        self._contact = (self._contact_sensor.data.current_contact_time.squeeze(1) > 0.01) #self._contact_sensor.data.current_contact_time.squeeze(1)
 
-        # print(f"camera_data: {camera_data.shape}")
-        obs = torch.cat(
+        self.obs = torch.cat(
             [
-                # camera_data.view(4, -1),       # [n, 30000]
                 self._quat.view(self.num_envs, -1),      # [n, 4]
                 self._pos.view(self.num_envs, -1),       # [n, 3]
                 self._lin_vel.view(self.num_envs, -1),           # [n, 3]
                 self._ang_vel.view(self.num_envs, -1),           # [n, 3]
+                # math.quat_apply(self._quat, self._robot.data.projected_gravity_b).view(self.num_envs, -1),
                 self._contact.view(self.num_envs, -1),           # [4, 3]  ← squeeze out the 2nd dim
             ],
             dim=1
         )
 
-        reward = self._get_rewards()
+        observations = {"state": self.obs}
+        self.extras["is_first"] = (self.episode_length_buf == self.episode_init)    
 
-        ended, time_out = self._get_dones()
-        
-        is_last = time_out
-        is_terminal = ended
-        is_first = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-            
-        dones = {"is_first": is_first, "is_last": is_last, "is_terminal": is_terminal}#, "is_landed": self._landed, "is_crashed": self._crashed}     
-        
-        observations = {"state": obs, "reward": reward}
-        observations.update(dones)      
-        return observations
-    
-    def _get_rewards(self) -> torch.Tensor:
 
-        contact = self._contact_sensor.data.current_contact_time.squeeze(1)
-        
-        self._mpower = (self._actions[:,2] != 0).to(dtype=torch.int, device=self.device) 
-        self._spower = (self._actions[:, :2] != 0).any(dim=1).to(dtype=torch.int, device=self.device)
-    
-        reward = torch.zeros(self.num_envs, device=self.device)
-
-        # --- Attitude Reward ---
+        # --- Attitude alignment ---
         q_des = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).expand(self.num_envs, -1)
         q_conj = torch.cat([self._quat[:, 0:1], -self._quat[:, 1:]], dim=1)
         e_q0 = q_conj[:, 0:1] * q_des[:, 0:1] - torch.sum(q_conj[:, 1:] * q_des[:, 1:], dim=1, keepdim=True)
@@ -356,16 +307,18 @@ class Lander6DOFEnv(DirectRLEnv):
         self.alignment = 2.0 * torch.atan2(torch.norm(e_qv, dim=1), torch.abs(e_q0.squeeze(1)))
         self.alignment = torch.clamp(self.alignment, 0.0, torch.pi)
         self._aligned = self.alignment < 5.7e-2
-        self.omega = torch.norm(self._ang_vel, dim=1)
-        self._alignment_prev = self.alignment.clone()
 
-        # --- Alignment conditions ---
-        self.aligned_history = torch.roll(self.aligned_history, shifts=-1, dims=1)
-        self.aligned_history[:, -1] = self._aligned
-
-        norm_actions = torch.norm(self._actions[:,3:], dim=1)/torch.tensor(self.actionHigh[:,3],device=self.device) # moment RCS penalty
+        return observations
+    
+    def _get_rewards(self) -> torch.Tensor:
+        
+        self._mpower = (self._actions[:,2] != 0).to(dtype=torch.int, device=self.device) 
+        self._spower = (self._actions[:, :2] != 0).any(dim=1).to(dtype=torch.int, device=self.device)
+    
+        reward = torch.zeros(self.num_envs, device=self.device)
 
         # --- Attitude reward ---
+        norm_actions = torch.norm(self._actions[:,3:], dim=1)/torch.tensor(self.actionHigh[:,3],device=self.device) # moment RCS penalty
         alignment_penalty = (1/10)-1/(10*torch.exp(-self.alignment/(0.4)))
         rcs_penalty = -0.3*norm_actions
         ang_vel_penalty = -0.05 * (self._ang_vel.abs().sum(dim=1))
@@ -374,26 +327,7 @@ class Lander6DOFEnv(DirectRLEnv):
         reward += rcs_penalty
         reward += ang_vel_penalty
 
-
         # --- Translational reward ---
-        
-        # --- Hovering conditions ---
-        alt_ok = self._altitude <= 2.0
-        vel_ok = torch.norm(self._lin_vel, dim=1) < self.cfg.vlim
-        pos_ok = torch.norm(self._pos[:, :2], dim=1) < self.cfg.rlim
-        no_contact = contact <= 0.1
-        self._hovering = alt_ok & vel_ok & pos_ok & no_contact
-
-        # --- Landed conditions ---
-        vel_landed = torch.abs(self._lin_vel[:, 2]) < self.cfg.vlim
-        contact_landed = vel_ok & (contact > 0.5)
-        self._landed = pos_ok & contact_landed
-
-        hard_landing = (contact > 0.0) & alt_ok & (~vel_landed)
-        self._crashed = hard_landing
-
-        # alt = torch.clamp(self._altitude, min=10.0)
-
         w_xy = 5
         w_z = 1
         
@@ -417,41 +351,36 @@ class Lander6DOFEnv(DirectRLEnv):
         rcs_translation_pen = -0.001*torch.norm(self._actions[:,:2], dim=1)/torch.tensor(self.actionHigh[:,0],device=self.device)
         reward += main_engine_pen + rcs_translation_pen
 
-        self.out_of_bounds_x = torch.logical_or(self._robot.data.root_pos_w[:,0] > 40, self._robot.data.root_pos_w[:,0] < -40)
-        self.out_of_bounds_y = torch.logical_or(self._robot.data.root_pos_w[:,1] > 40, self._robot.data.root_pos_w[:,1] < -40)
-        self.out_of_bounds = torch.logical_or(self.out_of_bounds_x, self.out_of_bounds_y)
-
         # --- Penalties and Bonuses ---
         reward[self._landed] += 20
-        reward[~self._aligned & self._crashed] -= 10
-        # hovering_pen = 0.00001*self._actions[(pos_ok & (self._altitude<1.0)),2]
-        # reward[(pos_ok & (self._altitude<1.0))] -= hovering_pen
-        reward[(~self._aligned & (self._altitude<5.0))] -= 0.01
+        reward[self._crashed] -= 20
+        reward[self._hard_landing] -= 40
+        reward[self._missed] -= 5
+        reward[((torch.abs(self._lin_vel[:,2]) > self.cfg.vlim) & (self._altitude<5.0))] -= 0.01
 
         reward[self._aligned & self._landed] += 50
 
-        reward -= 0.01
-
-        for i in range(self.num_envs):
-            roll, pitch, yaw = math.euler_xyz_from_quat(self._quat)
-            if self._aligned[i] & self._landed[i]:
-                print(f"""Env {i} Landed with:
-                    Position [m]             {self._pos[i][0]:.2f}, {self._pos[i][1]:.2f}, {self._pos[i][2]:.2f}
-                    Velocity [m/s]           {self._lin_vel[i][0]:.2f}, {self._lin_vel[i][1]:.2f}, {self._lin_vel[i][2]:.2f}
-                    Euler Angles [deg]       {torch.rad2deg(roll[i]):.2f}, {torch.rad2deg(pitch[i]):.2f}, {torch.rad2deg(yaw[i]):.2f}
-                    Alignment [deg]          {self.alignment[i]:.4f}
-                    Angular Velocity [rad/s] {self._ang_vel[i][0]:.2f}, {self._ang_vel[i][1]:.2f}, {self._ang_vel[i][2]:.2f}
-                    Contact Time             {contact[i]*self.step_dt:.2f}s
-                    at time                  {self.episode_length_buf[i] * self.step_dt:.2f}s""")
-            elif self._crashed[i]:
-                print(f"""Env {i} Crashed with:
-                    Position [m]             {self._pos[i][0]:.2f}, {self._pos[i][1]:.2f}, {self._pos[i][2]:.2f}
-                    Velocity [m/s]           {self._lin_vel[i][0]:.2f}, {self._lin_vel[i][1]:.2f}, {self._lin_vel[i][2]:.2f}
-                    Euler Angles [deg]       {torch.rad2deg(roll[i]):.2f}, {torch.rad2deg(pitch[i]):.2f}, {torch.rad2deg(yaw[i]):.2f}
-                    Alignment [deg]          {self.alignment[i]:.4f}
-                    Angular Velocity [rad/s] {self._ang_vel[i][0]:.2f}, {self._ang_vel[i][1]:.2f}, {self._ang_vel[i][2]:.2f}
-                    Contact Time             {contact[i]*self.step_dt:.2f}s
-                    at time                  {self.episode_length_buf[i] * self.step_dt:.2f}s""")
+        # --- DEBUG ---# 
+        # for i in range(self.num_envs):
+        #     roll, pitch, yaw = math.euler_xyz_from_quat(self._quat)
+        #     if self._aligned[i] & self._landed[i]:
+        #         print(f"""Env {i} Landed with:
+        #             Position [m]             {self._pos[i][0]:.2f}, {self._pos[i][1]:.2f}, {self._pos[i][2]:.2f}
+        #             Velocity [m/s]           {self._lin_vel[i][0]:.2f}, {self._lin_vel[i][1]:.2f}, {self._lin_vel[i][2]:.2f}
+        #             Euler Angles [deg]       {torch.rad2deg(roll[i]):.2f}, {torch.rad2deg(pitch[i]):.2f}, {torch.rad2deg(yaw[i]):.2f}
+        #             Alignment [deg]          {self.alignment[i]:.4f}
+        #             Angular Velocity [rad/s] {self._ang_vel[i][0]:.2f}, {self._ang_vel[i][1]:.2f}, {self._ang_vel[i][2]:.2f}
+        #             Contact Time             {contact[i]*self.step_dt:.2f}s
+        #             at time                  {self.episode_length_buf[i] * self.step_dt:.2f}s""")
+        #     elif self._crashed[i]:
+        #         print(f"""Env {i} Crashed with:
+        #             Position [m]             {self._pos[i][0]:.2f}, {self._pos[i][1]:.2f}, {self._pos[i][2]:.2f}
+        #             Velocity [m/s]           {self._lin_vel[i][0]:.2f}, {self._lin_vel[i][1]:.2f}, {self._lin_vel[i][2]:.2f}
+        #             Euler Angles [deg]       {torch.rad2deg(roll[i]):.2f}, {torch.rad2deg(pitch[i]):.2f}, {torch.rad2deg(yaw[i]):.2f}
+        #             Alignment [deg]          {self.alignment[i]:.4f}
+        #             Angular Velocity [rad/s] {self._ang_vel[i][0]:.2f}, {self._ang_vel[i][1]:.2f}, {self._ang_vel[i][2]:.2f}
+        #             Contact Time             {contact[i]*self.step_dt:.2f}s
+        #             at time                  {self.episode_length_buf[i] * self.step_dt:.2f}s""")
         
 
         rewards = {"reward": reward}
@@ -460,44 +389,86 @@ class Lander6DOFEnv(DirectRLEnv):
         for key, value in rewards.items():
             self._episode_sums[key] += value
 
-        with torch.no_grad():
-
-            # Bonus/Penalty events
-            self.landed_hist += (self._landed).sum().item()
-            self.hard_landing_hist += (hard_landing & ~vel_ok & pos_ok).sum().item()
-            self.missed_hist += (self._landed & self._aligned).sum().item()
-            self.aligned_hist += (self._aligned).sum().item()
-            self.crashed_hist += (self._crashed).sum().item()
-
-            # Summary statistics (mean/std)
-            print(f"\n=== Reward Diagnostics ===")
-            print(f"Attitude term:       mean={alignment_penalty.mean():.3f}, std={alignment_penalty.std():.3f}")
-            print(f"RCS term:            mean={rcs_penalty.mean():.3f}, std={rcs_penalty.std():.3f}")
-            print(f"Angular Vel term:    mean={ang_vel_penalty.mean():.3f}, std={ang_vel_penalty.std():.3f}")
-            # print(f"Position term:       mean={pos_reward.mean():.3f}, std={pos_reward.std():.3f}")
-            # print(f"Velocity term:       mean={vel_reward.mean():.3f}, std={vel_reward.std():.3f}")
-            print(f"Shaping term:        mean={shaping_term.mean():.3f}, std={shaping_term.std():.3f}")
-            print(f"Main Engine Penalty: mean={main_engine_pen.mean():.3f}, std={main_engine_pen.std():.3f}")
-            print(f"RCS Translation Pen: mean={rcs_translation_pen.mean():.3f}, std={rcs_translation_pen.std():.3f}")
-            # print(f"Hovering Penalty:    mean={hovering_pen.mean():.3f}, std={hovering_pen.std():.3f}")
-            print(f"--- Event counts ---")
-            print(f"Landed: {self.landed_hist}, Aligned Landed: {self.missed_hist}, Hard Landing: {self.hard_landing_hist}, Aligned: {self.aligned_hist}, Crashed: {self.crashed_hist}")
-            print(f"Total reward mean:  {reward.mean():.3f}, std={reward.std():.3f}")
-            print("==========================\n")
-
-
-        if reward.mean() > 100:
-            print("High reward achieved!")
         return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
+
+        obs = self._get_observations()
+
         self.time_out = (self.episode_length_buf >= self.max_episode_length - 1)
 
-        
+        # --- Terminal conditions ---
+        self._alt_ok = self._altitude <= 2.0
+        self._vel_ok = torch.norm(self._lin_vel, dim=1) < self.cfg.vlim
+        self._pos_ok = torch.norm(self._pos[:, :2], dim=1) < self.cfg.rlim
+        self._hovering = self._alt_ok & self._vel_ok & self._pos_ok & self._contact
 
-        # self.terminated = torch.logical_or(self._crashed, self._missed)
-        self.terminated = torch.logical_or(self._crashed, self._landed)
+        # --- Landed conditions ---
+        self._landed = self._pos_ok & self._vel_ok & self._contact
+
+        # --- Hard Landing conditions ---
+        self._hard_landing = self._pos_ok & ~self._vel_ok & self._contact
+
+        # --- Missed Landing conditions ---
+        self._missed =  ~self._pos_ok & self._vel_ok & self._contact
+
+        # --- Crashed conditions ---
+        self._crashed = ~self._pos_ok & ~self._vel_ok & self._contact
+
+        # print(f"{self._contact_sensor.data.current_contact_time.squeeze(1) > 0.01},   {self._pos},   {self._lin_vel},   {self._landed},   {self._hard_landing},   {self._missed},   {self._crashed}")
+
+        self.out_of_bounds_x = torch.logical_or(self._robot.data.root_pos_w[:,0] > 40, self._robot.data.root_pos_w[:,0] < -40)
+        self.out_of_bounds_y = torch.logical_or(self._robot.data.root_pos_w[:,1] > 40, self._robot.data.root_pos_w[:,1] < -40)
+        self.out_of_bounds = torch.logical_or(self.out_of_bounds_x, self.out_of_bounds_y)
+
+        self.terminated = torch.logical_or(self._crashed, self._missed)
+        self.terminated = torch.logical_or(self.terminated, self._hard_landing)
+        self.terminated = torch.logical_or(self.terminated, self._landed)
         self.terminated = torch.logical_or(self.terminated, self.out_of_bounds)
+
+        # Bonus/Penalty events
+        self.landed_hist += (self._landed).sum().item()
+        self.hard_landing_hist += (self._hard_landing).sum().item()
+        self.align_land_hist += (self._landed & self._aligned).sum().item()
+        self.aligned_hist += (self._aligned).sum().item()
+        self.crashed_hist += (self._crashed).sum().item()
+        self.OOB_hist += (self.out_of_bounds).sum().item()
+        self.time_out_hist += (self.time_out).sum().item()
+
+        self.extras["is_last"] = self.time_out
+        self.extras["is_terminal"] = self.terminated
+
+        if self.terminated.any().item() or self.time_out.any().item():
+
+            if "reset_obs" in self.extras: # resetting the reset_obs from the last timestep
+                self.extras.pop("reset_obs")
+            if "discount" in self.extras: #  it is from TimeLimit wrapper because there is a manual add of the 'done' so needs to be removed after use
+                self.extras.pop("discount")
+            self._last_terminal_obs = {k: v.clone() for k, v in obs.items()}
+            self._last_terminal_extras = {k: v.clone() for k, v in self.extras.items()}
+
+            with torch.no_grad():
+
+                # --- DEBUG SUMMARY --- #
+                # Summary statistics (mean/std)
+                # print(f"\n=== Reward Diagnostics ===")
+                # print(f"Attitude term:       mean={alignment_penalty.mean():.3f}, std={alignment_penalty.std():.3f}")
+                # print(f"RCS term:            mean={rcs_penalty.mean():.3f}, std={rcs_penalty.std():.3f}")
+                # print(f"Angular Vel term:    mean={ang_vel_penalty.mean():.3f}, std={ang_vel_penalty.std():.3f}")
+                # # print(f"Position term:       mean={pos_reward.mean():.3f}, std={pos_reward.std():.3f}")
+                # # print(f"Velocity term:       mean={vel_reward.mean():.3f}, std={vel_reward.std():.3f}")
+                # print(f"Shaping term:        mean={shaping_term.mean():.3f}, std={shaping_term.std():.3f}")
+                # print(f"Main Engine Penalty: mean={main_engine_pen.mean():.3f}, std={main_engine_pen.std():.3f}")
+                # print(f"RCS Translation Pen: mean={rcs_translation_pen.mean():.3f}, std={rcs_translation_pen.std():.3f}")
+                # print(f"Hovering Penalty:    mean={hovering_pen.mean():.3f}, std={hovering_pen.std():.3f}")
+                # print(f"Position term:       mean={self._pos}")
+                # print(f"Velocity term:       mean={self._lin_vel}")
+                # print(f"Contact:             mean={self._contact}")
+                print("==========================\n")
+                print(f"--- Event counts ---")
+                print(f"Landed: {self.landed_hist}, Aligned Landed: {self.align_land_hist}, Hard Landing: {self.hard_landing_hist}, Aligned: {self.aligned_hist}, Crashed: {self.crashed_hist}, OOB: {self.OOB_hist}, Time Out: {self.time_out_hist}")
+                # print(f"Total reward mean:  {reward.mean():.3f}, std={reward.std():.3f}")
+                print("==========================\n")
 
         return self.terminated, self.time_out
 
@@ -505,24 +476,13 @@ class Lander6DOFEnv(DirectRLEnv):
         if env_ids is None or len(env_ids) == self.num_envs:
             env_ids = self._robot._ALL_INDICES
 
-        self.aligned_history[env_ids,:] = False
         # Logging
         final_distance_to_goal = torch.linalg.norm(
             self._desired_pos_w[env_ids] - self._robot.data.root_pos_w[env_ids], dim=1
         ).mean()
-        extras = dict()
-        for key in self._episode_sums.keys():
-            episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
-            extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length_s
-            self._episode_sums[key][env_ids] = 0.0
-        self.extras["log"] = dict()
-        self.extras["log"].update(extras)
-        extras = dict()
-        extras["Episode_Termination/died"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
-        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
-        extras["Metrics/final_distance_to_goal"] = final_distance_to_goal.item()
-        self.extras["log"].update(extras)
-
+        self.extras["is_first"][env_ids] = True
+        self.extras["is_last"][env_ids] = False
+        self.extras["is_terminal"][env_ids] = False
 
         self._robot.reset(env_ids) # necessary for isaaclab
         self._imu.reset(env_ids) # necessary for isaaclab
@@ -530,7 +490,7 @@ class Lander6DOFEnv(DirectRLEnv):
         if len(env_ids) == self.num_envs and self.num_envs > 1:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
-            
+        self.episode_init[env_ids] = self.episode_length_buf[env_ids]
 
         # Sample new commands
         self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-0.0, 0.0)
@@ -538,22 +498,20 @@ class Lander6DOFEnv(DirectRLEnv):
         self._desired_pos_w[env_ids, 0] = 0
         self._desired_pos_w[env_ids, 1] = -0
         self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0, 0)
+
         # Reset robot state
-        # joint_pos = self._robot.data.default_joint_pos[env_ids]
-        # joint_vel = self._robot.data.default_joint_vel[env_ids]
         init_euler = torch.zeros(len(env_ids), 3, device=self.device).uniform_(-10*np.pi/180, 10*np.pi/180) # roll, pitch, yawv +- 5 degrees
         default_root_state = self._robot.data.default_root_state[env_ids]
-        default_root_state[:, :2] += torch.zeros_like(default_root_state[:, :2]).uniform_(-20,20)#(-20.0, 20.0) # x and y position
-        default_root_state[:, 2] += torch.zeros_like(default_root_state[:, 2]).uniform_(110,130)#(0.0, 20.0) # z position
+        default_root_state[:, :2] += torch.zeros_like(default_root_state[:, :2]).uniform_(-20,20) # x and y position
+        default_root_state[:, 2] += torch.zeros_like(default_root_state[:, 2]).uniform_(110,130) # z position
         default_root_state[:, 3:7] = math.quat_from_euler_xyz(init_euler[:,0], init_euler[:,1], init_euler[:,2])  # random orientation
         default_root_state[:, 7:9] += torch.zeros_like(default_root_state[:, 7:9]).uniform_(-2.0, 2.0) # x and y linear velocity
         default_root_state[:, 9] += torch.zeros_like(default_root_state[:, 9]).uniform_(-5.0, -1.0) # z linear velocity
         default_root_state[:, 10:13] += torch.zeros_like(default_root_state[:, 10:13]).uniform_(-0.035, 0.035) # angular velocity
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
-        self._initial_state[env_ids] = default_root_state
+        # self._initial_state[env_ids] = default_root_state
         self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
-        # self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # create markers if necessary for the first time
