@@ -48,6 +48,34 @@ detailed tutorials and step-by-step guides. Follow these links to learn more abo
 - [Tutorials](https://isaac-sim.github.io/IsaacLab/main/source/tutorials/index.html)
 - [Available environments](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)
 
+### DreamerV3: Lunar Lander
+
+This repository uses Git LFS for large assets and files, including USD assets and PyTorch checkpoints (`.pt`). Install Git LFS and fetch those files after cloning, or asset files may contain only LFS pointer text:
+
+```bash
+git lfs install
+git lfs pull
+```
+
+From the repository root, train DreamerV3 on the direct Lunar Lander environment with 8 parallel environments:
+
+```bash
+./isaaclab.sh -p scripts/reinforcement_learning/dreamer/train.py \
+  --task Isaac-PlanetaryLander-Direct-v0 \
+  --num_envs 8
+```
+
+The `--num_envs` value can be adjusted to suit your hardware. Training logs and checkpoints are written under `logs/IsaacLab/lander_direct/`.
+
+To play the latest checkpoint for this task:
+
+```bash
+./isaaclab.sh -p scripts/reinforcement_learning/dreamer/play.py \
+  --task Isaac-PlanetaryLander-Direct-v0
+```
+
+The play script selects a checkpoint from `logs/IsaacLab/lander_direct/`; run it after training has saved a checkpoint.
+
 
 ## Isaac Sim Version Dependency
 
