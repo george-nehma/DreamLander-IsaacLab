@@ -8,12 +8,6 @@
 **/*.dmp
 **/.thumbs
 
-# No USD files allowed in the repo
-**/*.usd
-**/*.usda
-**/*.usdc
-**/*.usdz
-
 # Python
 .DS_Store
 **/*.egg-info/
@@ -55,7 +49,7 @@ _build
 
 # RL-Games
 **/runs/*
-# **/logs/*
+**/logs/*
 **/recordings/*
 
 # Pre-Trained Checkpoints
@@ -67,14 +61,11 @@ _build
 # Tests
 tests/
 
-# Large files
-*.pt 
 # /logs/
 /source/STTR
 /source/lander_assets/*.fbx
 /source/lander_assets/*.png
 /source/lander_assets/*.jpg
-/source/lander_assets/*.usd
 /source/lander_assets/*.fbm
 /source/lander_assets/textures/
 /source/lander_assets/Textures/
