@@ -61,7 +61,7 @@ From the repository root, train DreamerV3 on the direct Lunar Lander environment
 
 ```bash
 ./isaaclab.sh -p scripts/reinforcement_learning/dreamer/train.py \
-  --task Isaac-PlanetaryLander-Direct-v0 \
+  --task Isaac-PlanetaryLander-Direct-6DOF-v0 \
   --num_envs 8
 ```
 
@@ -71,7 +71,7 @@ To play the latest checkpoint for this task:
 
 ```bash
 ./isaaclab.sh -p scripts/reinforcement_learning/dreamer/play.py \
-  --task Isaac-PlanetaryLander-Direct-v0
+  --task Isaac-PlanetaryLander-Direct-6DOF-v0
 ```
 
 The play script selects a checkpoint from `logs/IsaacLab/lander_direct/`; run it after training has saved a checkpoint.
