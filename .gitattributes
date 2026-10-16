@@ -7,4 +7,3 @@
 /logs/IsaacLab/**/*.pt filter=lfs diff=lfs merge=lfs -text
 /logs/IsaacLab/**/*.pkl filter=lfs diff=lfs merge=lfs -text
 /logs/IsaacLab/**/*.yaml filter=lfs diff=lfs merge=lfs -text
-/logs/IsaacLab/**/*.npz filter=lfs diff=lfs merge=lfs -text

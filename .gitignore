@@ -79,7 +79,6 @@ tests/
 !/logs/IsaacLab/**/*.pt
 !/logs/IsaacLab/**/*.pkl
 !/logs/IsaacLab/**/*.yaml
-!/logs/IsaacLab/**/*.npz
 
 !/source/lander_assets/**/*.usd
 !/source/lander_assets/**/*.hdr
