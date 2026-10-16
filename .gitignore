@@ -84,6 +84,7 @@ tests/
 !/source/lander_assets/**/*.hdr
 !/source/lander_assets/**/*.jpg
 !/source/lander_assets/**/*.png
+!/source/lander_assets/**/*.py
 
 
 # Docker history
