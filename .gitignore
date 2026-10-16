@@ -61,10 +61,30 @@ _build
 # Tests
 tests/
 
-# extras
-/logs/
-/source/lander_assets/
-/source/STTR
+
+
+# Ignore everything under these directories by default
+/logs/**
+/source/lander_assets/**
+/source/STTR/**
+
+# Allow Git to traverse subdirectories
+!/logs/
+!/logs/IsaacLab/
+!/logs/IsaacLab/**/
+!/source/lander_assets/
+!/source/lander_assets/**/
+
+# Only allow selected file types
+!/logs/IsaacLab/**/*.pt
+!/logs/IsaacLab/**/*.pkl
+!/logs/IsaacLab/**/*.yaml
+!/logs/IsaacLab/**/*.npz
+
+!/source/lander_assets/**/*.usd
+!/source/lander_assets/**/*.hdr
+!/source/lander_assets/**/*.jpg
+!/source/lander_assets/**/*.png
 
 
 # Docker history
