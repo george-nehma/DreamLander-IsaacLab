@@ -61,17 +61,11 @@ _build
 # Tests
 tests/
 
-# /logs/
+# extras
+/logs/
+/source/lander_assets/
 /source/STTR
-/source/lander_assets/*.fbx
-/source/lander_assets/*.png
-/source/lander_assets/*.jpg
-/source/lander_assets/*.fbm
-/source/lander_assets/textures/
-/source/lander_assets/Textures/
-*.blend
-*.hdr
-*.npz
+
 
 # Docker history
 .isaac-lab-docker-history
