@@ -50,7 +50,7 @@ detailed tutorials and step-by-step guides. Follow these links to learn more abo
 
 ### DreamerV3: Lunar Lander
 
-This repository uses Git LFS for large assets and files, including USD assets and PyTorch checkpoints (`.pt`). Install Git LFS and fetch those files after cloning, or asset files may contain only LFS pointer text:
+This repository uses Git LFS for large assets and files, including USD assets and PyTorch checkpoints (`.pt`). Install Git LFS (https://git-lfs.com/) and fetch those files after cloning, or asset files may contain only LFS pointer text:
 
 ```bash
 git lfs install
